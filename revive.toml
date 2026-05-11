@@ -1,0 +1,61 @@
+enableAllRules = true
+
+[rule.line-length-limit]
+  arguments = [200]
+
+[rule.import-alias-naming]
+  arguments = ["^[a-z][a-z0-9_]*(V[0-9]+)?$"]
+
+[rule.cyclomatic]
+  arguments = [42]
+[rule.cognitive-complexity]
+  arguments = [60]
+
+[rule.unhandled-error]
+  arguments = ["fmt.Print", "fmt.Printf", "fmt.Println", "strings.Builder.WriteString", "bytes.Buffer.WriteString"]
+
+[rule.unchecked-type-assertion]
+  arguments = [{acceptIgnoredAssertionResult = true}]
+
+[rule.unexported-return]
+  Disabled = true
+
+[rule.exported]
+  Disabled = true
+
+[rule.package-comments]
+  Disabled = true
+
+[rule.max-public-structs]
+  Disabled = true
+
+[rule.add-constant]
+  Disabled = true
+
+[rule.redundant-import-alias]
+  disabled = true
+
+[rule.package-directory-mismatch]
+  disabled = true
+
+[rule.enforce-switch-style]
+  disabled = true
+
+[rule.flag-parameter]
+  disabled = true
+
+[rule.struct-tag] # tag inline unrecognized
+  disabled = true
+
+[rule.function-length]
+  arguments = [55, 100]
+  exclude = ["**/*_test.go"]
+
+[rule.argument-limit]
+  arguments = [10]
+
+[rule.package-naming]
+  exclude = ["test/**", "**/*_test.go"]
+
+[rule.var-naming]
+  arguments = [[], [], [{skipPackageNameChecks = true}]]

@@ -1,0 +1,40 @@
+#https://taskfile.dev/
+version: '3'
+
+tasks:
+
+  ensure-check-go-tool:
+    desc: 'ensure check-go-tool is installed'
+    silent: true
+    internal: true
+    status:
+      - command -v check-go-tool
+    cmds:
+      - go install github.com/oktalz/check-go-tool@latest
+
+  check-go-tool:
+    desc: 'ensure go tool is installed/available'
+    silent: true
+    internal: true
+    deps:
+      - task: ensure-check-go-tool
+    cmds:
+      - check-go-tool '{{ index . .TOOL }}' >/dev/null
+
+  check-go-tools:
+    desc: 'ensure all go tools are installed'
+    silent: true
+    internal: true
+    cmds:
+      - for:
+          var: TOOLS
+        task: check-go-tool
+        vars:
+          TOOL: '{{.ITEM}}'
+
+  tools-install:
+    cmds:
+      - task: check-go-tools
+        vars:
+          TOOLS: [YQ, KIND, CLOUD_PROVIDER_KIND, CONTROLLER_GEN, CHECK_COMMIT, BETTERALIGN, STATICCHECK, GO_LICENSES, GOVULNCHECK, GOFUMPT, REVIVE, GOTESTSUM]
+      - task: check-kubectl

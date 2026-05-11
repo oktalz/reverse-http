@@ -1,0 +1,9 @@
+# Generated PKI material — never commit. workers-ca.key in particular is the
+# long-term secret that signs every worker cert; leaking it lets anyone forge
+# a cert that passes HAProxy's `verify required` on the reverse-tunnel
+# ingress. Regenerate locally with ./gen-certs.sh as needed.
+rhttp-certs/
+*.key
+*.pem
+*.csr
+*.srl

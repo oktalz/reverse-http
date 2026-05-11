@@ -1,0 +1,104 @@
+
+#https://taskfile.dev/
+version: "3"
+
+env:
+  TMP: tmp
+
+vars:
+  YQ: github.com/mikefarah/yq/v4@v4.47.1
+  KIND: sigs.k8s.io/kind@v0.31.0
+  CLOUD_PROVIDER_KIND: sigs.k8s.io/cloud-provider-kind@v0.10.0
+  CONTROLLER_GEN: sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.1
+  BETTERALIGN: github.com/dkorunic/betteralign/cmd/betteralign@v0.9.0
+  STATICCHECK: honnef.co/go/tools/cmd/staticcheck@v0.7.0
+  GO_LICENSES: github.com/google/go-licenses@v1.6.0
+  GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.1.4
+  GOFUMPT: mvdan.cc/gofumpt@v0.10.0
+  REVIVE: github.com/mgechev/revive@v1.15.0
+  GOTESTSUM: gotest.tools/gotestsum@v1.13.0
+
+dotenv:
+  - .env
+
+includes:
+  go:
+    taskfile: taskfile-go.yml
+    flatten: true
+    internal: true
+
+tasks:
+  ci:
+    desc: "do almost all the checks"
+    cmds:
+      - task: tidy
+      - task: format
+      - task: lint
+      - task: test
+
+  test:
+    desc: "run Go tests"
+    vars:
+      FORMAT: '{{.FORMAT | default "pkgname"}}'
+      PKG: '{{.PKG | default "./..."}}'
+    deps:
+      - task: check-go-tool
+        vars:
+          TOOL: GOTESTSUM
+    cmds:
+      - "$(check-go-tool {{.GOTESTSUM}}) --format-icons=hivis --format={{.FORMAT}} --format-hide-empty-pkg -- -v {{.PKG}}"
+  tidy:
+    desc: "run Go mod tidy"
+    cmds:
+      - go mod tidy
+
+  lint:
+    desc: "run Go linters"
+    deps:
+      - task: check-go-tools
+        vars:
+          TOOLS: [BETTERALIGN, REVIVE, STATICCHECK]
+    cmds:
+      - "$(check-go-tool {{.REVIVE}}) -config revive.toml -formatter friendly -set_exit_status ./..."
+      - "$(check-go-tool {{.STATICCHECK}}) ./..."
+      - "$(check-go-tool {{.BETTERALIGN}}) ./..."
+
+  format:
+    desc: "formats the code"
+    deps:
+      - task: check-go-tools
+        vars:
+          TOOLS: [BETTERALIGN, GOFUMPT]
+    cmds:
+      - go fix ./...
+      - "$(check-go-tool {{.BETTERALIGN}}) -apply ./... || true"
+      - "$(check-go-tool {{.GOFUMPT}}) -l -w ."
+
+  licenses:
+    dir: cmd/controller
+    desc: "check licenses"
+    deps:
+      - task: check-go-tool
+        vars:
+          TOOL: GO_LICENSES
+    cmds:
+      - |
+        PROJECT="$(go list -m)"
+        ALLOWED_LICENSES="$(<../../.allowed_license_types)"
+        BIN="$(check-go-tool {{.GO_LICENSES}})"
+        $BIN report --ignore "$PROJECT" --ignore "github.com/modern-go/reflect2" --ignore "golang.org/x/sys" --ignore "golang.org/x/sys/unix"  .
+        $BIN check --allowed_licenses="$ALLOWED_LICENSES" --ignore "$PROJECT"  --ignore "github.com/modern-go/reflect2" --ignore "github.com/modern-go/reflect2" --ignore "golang.org/x/sys/unix"  .
+
+  govulncheck:
+    deps:
+      - task: check-go-tool
+        vars:
+          TOOL: GOVULNCHECK
+    cmds:
+      - "$(check-go-tool {{.GOVULNCHECK}}) -show verbose ./..."
+
+  legal:
+    desc: "check legal"
+    cmds:
+      - task: govulncheck
+      - task: licenses
