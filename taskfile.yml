@@ -10,7 +10,7 @@ vars:
   KIND: sigs.k8s.io/kind@v0.31.0
   CLOUD_PROVIDER_KIND: sigs.k8s.io/cloud-provider-kind@v0.10.0
   CONTROLLER_GEN: sigs.k8s.io/controller-tools/cmd/controller-gen@v0.20.1
-  BETTERALIGN: github.com/dkorunic/betteralign/cmd/betteralign@v0.9.0
+  BETTERALIGN: github.com/dkorunic/betteralign/cmd/betteralign@v0.12.0
   STATICCHECK: honnef.co/go/tools/cmd/staticcheck@v0.7.0
   GO_LICENSES: github.com/google/go-licenses@v1.6.0
   GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.1.4

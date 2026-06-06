@@ -61,20 +61,24 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "hello from behind the proxy")
+	mux.HandleFunc("/hello", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintln(w, "hello from behind the proxy")
 	})
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		flusher := w.(http.Flusher)
-		for i := 0; i < 5; i++ {
+		flusher, flushherOK := w.(http.Flusher)
+		if !flushherOK {
+			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+		for i := range 5 {
 			select {
 			case <-r.Context().Done():
 				return
 			default:
 			}
-			fmt.Fprintf(w, "data: tick %d\n\n", i)
+			_, _ = fmt.Fprintf(w, "data: tick %d\n\n", i)
 			flusher.Flush()
 			time.Sleep(500 * time.Millisecond)
 		}

@@ -5,17 +5,18 @@
 //
 //   - -tunnel-addr (default :8443): mTLS HTTP/2, workers attach here.
 //     Clients must present a cert chaining to -workers-ca.
+//
 //   - -public-addr (default :8080): public HTTP. Each request is forwarded
 //     across one of the attached worker tunnels (default selector: least
 //     in-flight).
 //
-//	cd examples/pki && ./gen-certs.sh        # mint workers-ca + a worker cert
-//	# also need a server cert for this proxy:
-//	openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
-//	    -subj /CN=localhost -keyout server.key -out server.crt
-//	go run ./examples/proxy \
-//	    -cert server.crt -key server.key \
-//	    -workers-ca rhttp-certs/workers-ca.crt
+//     cd examples/pki && ./gen-certs.sh        # mint workers-ca + a worker cert
+//     # also need a server cert for this proxy:
+//     openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+//     -subj /CN=localhost -keyout server.key -out server.crt
+//     go run ./examples/proxy \
+//     -cert server.crt -key server.key \
+//     -workers-ca rhttp-certs/workers-ca.crt
 //
 // Pair with `go run ./examples/worker -addr localhost:8443 -ca server.crt …`
 // then `curl http://localhost:8080/hello`.
