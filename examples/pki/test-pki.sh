@@ -9,13 +9,13 @@
 #   5. CN regex validation rejects subject-injection / path-traversal args.
 #   6. Re-running with an existing CA reuses it instead of replacing.
 #
-# Run from the repo root: ./test-pki.sh
+# Run from anywhere: examples/pki/test-pki.sh
 
 set -euo pipefail
 
-REPO_DIR=$(cd "$(dirname "$0")" && pwd)
-GEN=$REPO_DIR/gen-certs.sh
-CFG=$REPO_DIR/haproxy.cfg
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+GEN=$SCRIPT_DIR/gen-certs.sh
+CFG=$SCRIPT_DIR/../haproxy/haproxy.cfg
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

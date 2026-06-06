@@ -351,7 +351,7 @@ if err != nil { log.Fatal(err) }   // ErrMTLSRequired etc.
 ```
 
 And the matching HAProxy bind line (full config in
-[`examples/haproxy.cfg`](examples/haproxy.cfg)):
+[`examples/haproxy/haproxy.cfg`](examples/haproxy/haproxy.cfg)):
 
 ```
 bind 0.0.0.0:8443 ssl crt /etc/haproxy/server.pem \
@@ -366,13 +366,13 @@ tcp-request session reject unless is_worker
 ### Generating a tiny in-house PKI
 
 For a small fleet, a one-off CA + per-worker cert is fine. The repo ships
-a helper script at [`examples/gen-certs.sh`](examples/gen-certs.sh) that
+a helper script at [`examples/pki/gen-certs.sh`](examples/pki/gen-certs.sh) that
 mints a CA on first run and one client cert per worker name:
 
 ```sh
-./examples/gen-certs.sh                       # CA + cert with CN "rhttp-worker"
-./examples/gen-certs.sh worker-1 worker-2     # two named worker certs (same CA)
-./examples/gen-certs.sh -d ./pki worker-1     # custom output dir
+./examples/pki/gen-certs.sh                       # CA + cert with CN "rhttp-worker"
+./examples/pki/gen-certs.sh worker-1 worker-2     # two named worker certs (same CA)
+./examples/pki/gen-certs.sh -d ./pki worker-1     # custom output dir
 ```
 
 Re-running the script reuses the existing `workers-ca.crt`+`workers-ca.key`
@@ -396,7 +396,7 @@ your public site. The worker passes that LE issuer chain via
 ## HAProxy configuration
 
 A complete minimal recommended config is in
-[`examples/haproxy.cfg`](examples/haproxy.cfg). The four lines specific
+[`examples/haproxy/haproxy.cfg`](examples/haproxy/haproxy.cfg). The four lines specific
 to the reverse-http backend (besides the mTLS bind line above):
 
 ```

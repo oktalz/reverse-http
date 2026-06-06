@@ -29,7 +29,7 @@ import (
 //
 // These spin up a real HAProxy subprocess in front of an rhttp worker and
 // drive traffic through HAProxy's public frontend. They prove the
-// recommended config in examples/haproxy.cfg actually works for the
+// recommended config in examples/haproxy/haproxy.cfg actually works for the
 // scenarios that bit slides during integration, and they guard the library
 // against future regressions visible only through a real proxy.
 //
