@@ -15,7 +15,7 @@ Module: `github.com/oktalz/reverse-http`
 - Mutual TLS authenticates the worker to the proxy.
 - One connection pool, many concurrent streams (HTTP/2 multiplexing).
 - Auto-reconnect with jittered backoff; PING-based liveness.
-- Standard `net/http.Handler`: `http.Flusher`, `req.Context()`, panic recovery — works the way you'd expect.
+- Standard `net/http.Handler`: `http.Flusher`, `req.Context()`, panic recovery, `Content-Length` enforcement (short/excess writes reset the stream instead of sending a truncated message) — works the way you'd expect.
 - Graceful shutdown: `pool.Shutdown(ctx)` sends GOAWAY and drains in-flight requests within your deadline.
 
 ## Install
