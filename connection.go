@@ -117,14 +117,38 @@ func dial(opts ServerOptions, p *Pool, once *sync.Once) error {
 	}
 	conn.pool = p
 	p.registerConn(conn)
-	defer p.deregisterConn(conn)
 
-	<-readyCh
+	// serve closes readyCh only after the peer's initial SETTINGS; if the
+	// conn dies during the handshake, errCh fires instead — select on both
+	// so a peer that accepts TLS and then hangs up can't wedge the slot.
+	select {
+	case <-readyCh:
+	case err := <-errCh:
+		p.deregisterConn(conn)
+		return err
+	}
 	once.Do(func() {
 		p.ready.Done()
 	})
 
-	return <-errCh
+	select {
+	case err := <-errCh:
+		p.deregisterConn(conn)
+		return err
+	case <-conn.DrainStarted():
+		// The peer sent a graceful GOAWAY (HAProxy soft-stop/reload): the
+		// tunnel finishes its in-flight streams in the background while this
+		// slot dials a replacement immediately, so pool capacity doesn't dip
+		// for the length of the drain. The reaper counts as a maintainer so
+		// Pool.Shutdown still waits for (and can wake) the draining conn.
+		p.maintainers.Add(1)
+		go func() {
+			defer p.maintainers.Done()
+			<-errCh
+			p.deregisterConn(conn)
+		}()
+		return nil
+	}
 }
 
 // startConnection wraps an already-established net.Conn in a worker

@@ -72,6 +72,13 @@ type Conn struct {
 	writeShutdown chan struct{} // closed by teardown to wake a parked writer
 	writeDeadCh   chan struct{} // closed when the writer goroutine exits
 
+	// Graceful-drain signals (see the draining field below): drainStarted is
+	// closed when drain mode begins so a pool slot can dial a replacement
+	// immediately; drainDone is closed once the stream registry empties
+	// while draining.
+	drainStarted chan struct{}
+	drainDone    chan struct{}
+
 	// Header-block scratch. Pseudo-headers are stored in dedicated fields
 	// so the emit callback doesn't case-switch on string content per header.
 	scratchMethod    string
@@ -94,6 +101,9 @@ type Conn struct {
 
 	pingCounter uint64
 
+	drainStartOnce sync.Once
+	drainDoneOnce  sync.Once
+
 	streamsMu sync.Mutex
 
 	// maxFrameSize is the peer's MAX_FRAME_SIZE — updated by the frame reader
@@ -109,6 +119,10 @@ type Conn struct {
 	// excess streams and count each refusal against the connection's glitch
 	// budget, which can get the whole connection killed.
 	peerMaxStreams atomic.Uint32
+
+	// draining is set once the peer has sent a graceful GOAWAY(NO_ERROR):
+	// existing streams are still served, but no new streams may be opened.
+	draining atomic.Bool
 
 	// LastStreamID is the highest peer-initiated stream ID accepted. Used as
 	// the last-stream-id value on the GOAWAY frame sent during teardown
@@ -150,12 +164,14 @@ func New(rwc net.Conn, maxConcurrentStreams uint32) (*Conn, error) {
 	}
 
 	c := &Conn{
-		Transport:  rwc,
-		Framer:     framer,
-		dec:        hpack.NewDecoder(4096, nil),
-		streams:    make(map[uint32]*Stream),
-		canonNames: make(map[string]string, len(CommonCanonNames)+8),
-		lowerNames: make(map[string]string, len(CommonLowerNames)+8),
+		Transport:    rwc,
+		Framer:       framer,
+		dec:          hpack.NewDecoder(4096, nil),
+		streams:      make(map[uint32]*Stream),
+		canonNames:   make(map[string]string, len(CommonCanonNames)+8),
+		lowerNames:   make(map[string]string, len(CommonLowerNames)+8),
+		drainStarted: make(chan struct{}),
+		drainDone:    make(chan struct{}),
 	}
 	c.maxFrameSize.Store(16384)
 	c.peerMaxStreams.Store(NoStreamLimit)
@@ -226,11 +242,16 @@ func (c *Conn) GetStream(id uint32) *Stream {
 	return s
 }
 
-// RemoveStream deregisters id from the conn's stream map.
+// RemoveStream deregisters id from the conn's stream map. While draining,
+// the last removal completes the drain.
 func (c *Conn) RemoveStream(id uint32) {
 	c.streamsMu.Lock()
 	delete(c.streams, id)
+	n := len(c.streams)
 	c.streamsMu.Unlock()
+	if n == 0 && c.draining.Load() {
+		c.finishDrain()
+	}
 }
 
 // ActiveStreams returns the current number of registered streams. Exposed
@@ -272,6 +293,57 @@ func (c *Conn) activeStreamWindows() []*int32 {
 	}
 	c.streamsMu.Unlock()
 	return out
+}
+
+// ---- graceful drain ---------------------------------------------------------
+
+// BeginDrain puts the connection into drain mode, the reaction to a graceful
+// GOAWAY(NO_ERROR) from the peer (HAProxy emits one on soft-stop/reload while
+// remaining willing to complete open streams). Existing streams keep being
+// served; DrainComplete reports true once the registry empties. Idempotent.
+//
+// There is deliberately no drain deadline here: a dead peer is caught by the
+// PING watchdog, a live one closes the conn itself once its side is done, and
+// either ends the frame loop. The frame reader keeps running throughout.
+func (c *Conn) BeginDrain() {
+	c.draining.Store(true)
+	c.drainStartOnce.Do(func() { close(c.drainStarted) })
+	c.streamsMu.Lock()
+	n := len(c.streams)
+	c.streamsMu.Unlock()
+	if n == 0 {
+		c.finishDrain()
+	}
+}
+
+// finishDrain marks the drain complete and pokes the transport's read
+// deadline so a frame reader parked in ReadFrame observes DrainComplete now
+// rather than after the next idle tick.
+func (c *Conn) finishDrain() {
+	c.drainDoneOnce.Do(func() {
+		close(c.drainDone)
+		_ = c.Transport.SetReadDeadline(time.Now())
+	})
+}
+
+// Draining reports whether BeginDrain has been called. Stream-opening paths
+// (proxy role) must refuse new streams once this is set.
+func (c *Conn) Draining() bool { return c.draining.Load() }
+
+// DrainStarted returns a channel closed when the conn enters drain mode.
+// The worker pool selects on it to dial a replacement tunnel immediately
+// instead of waiting out the drain.
+func (c *Conn) DrainStarted() <-chan struct{} { return c.drainStarted }
+
+// DrainComplete reports whether a drain has finished — draining was begun and
+// every registered stream has since completed.
+func (c *Conn) DrainComplete() bool {
+	select {
+	case <-c.drainDone:
+		return true
+	default:
+		return false
+	}
 }
 
 // ---- PING liveness --------------------------------------------------------

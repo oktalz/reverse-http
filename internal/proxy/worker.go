@@ -18,6 +18,11 @@ import (
 // the whole tunnel killed.
 var ErrTunnelSaturated = errors.New("rhttp/proxy: tunnel is at the peer's concurrent-stream limit")
 
+// ErrTunnelDraining is returned by openStream once the worker has sent a
+// graceful GOAWAY: its in-flight streams still complete, but it accepts no
+// new ones.
+var ErrTunnelDraining = errors.New("rhttp/proxy: tunnel is draining after GOAWAY")
+
 // Worker is one attached reverse-http tunnel. Each Worker owns a single
 // *h2.Conn and presents a stream-multiplexed transport for outbound public
 // requests. Created by the proxy's tunnel-accept loop; removed when the
@@ -66,6 +71,10 @@ func (w *Worker) Certificate() *x509.Certificate { return w.cert }
 // InFlight returns the current number of outbound streams being forwarded
 // through this worker. Safe for concurrent reads.
 func (w *Worker) InFlight() int64 { return w.inFlight.Load() }
+
+// Draining reports whether the worker has sent a graceful GOAWAY — it still
+// completes in-flight streams but must not be picked for new requests.
+func (w *Worker) Draining() bool { return w.conn.Draining() }
 
 // saturated reports whether the tunnel has no room for another concurrent
 // stream under the peer's advertised SETTINGS_MAX_CONCURRENT_STREAMS. Used by
@@ -132,6 +141,9 @@ func (w *Worker) failAllStreams(err error) {
 func (w *Worker) openStream(initialWindow int32, sendHeaders func(streamID uint32) error) (*clientStream, error) {
 	w.streamsMu.Lock()
 	defer w.streamsMu.Unlock()
+	if w.conn.Draining() {
+		return nil, ErrTunnelDraining
+	}
 	if uint32(len(w.streams)) >= w.conn.PeerMaxStreams() {
 		return nil, ErrTunnelSaturated
 	}

@@ -113,6 +113,11 @@ func serveTunnel(w *Worker, p *Proxy) error {
 			return nil
 		default:
 		}
+		// A completed graceful drain (worker sent GOAWAY(NO_ERROR), last
+		// in-flight forward finished) ends the loop cleanly.
+		if c.DrainComplete() {
+			return h2.ErrGoaway
+		}
 		c.SetIdleDeadline()
 		f, err := c.Framer.ReadFrame()
 		if err != nil {
@@ -121,6 +126,9 @@ func serveTunnel(w *Worker, p *Proxy) error {
 				case <-p.shutdownCh:
 					return nil
 				default:
+				}
+				if c.DrainComplete() {
+					return h2.ErrGoaway
 				}
 				if err := c.SendOrCheckPing(); err != nil {
 					return err
@@ -194,7 +202,16 @@ func handleProxyFrame(w *Worker, _ *Proxy, f http2.Frame) error {
 		return nil
 
 	case *http2.GoAwayFrame:
-		return h2.ErrGoaway
+		if f.ErrCode != http2.ErrCodeNo {
+			return h2.ErrGoaway
+		}
+		// Graceful GOAWAY — the worker (an HAProxy edge on soft-stop, or a
+		// Go worker pool shutting down) stops accepting new streams but
+		// still completes the ones in flight. Drain: the selector stops
+		// picking this worker, in-flight forwards run to completion, and
+		// the loop exits via DrainComplete once the registry empties.
+		c.BeginDrain()
+		return nil
 
 	case *http2.RSTStreamFrame:
 		id := f.Header().StreamID

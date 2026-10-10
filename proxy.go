@@ -103,6 +103,12 @@ func (pw *ProxyWorker) Certificate() any { return pw.w.Certificate() }
 // worker's tunnel. Selectors typically consult this.
 func (pw *ProxyWorker) InFlight() int64 { return pw.w.InFlight() }
 
+// Draining reports whether this worker has sent a graceful GOAWAY: it still
+// completes in-flight requests but accepts no new ones and is about to
+// detach. Draining workers are already filtered out of the slice a Selector
+// sees; this accessor is for monitoring hooks.
+func (pw *ProxyWorker) Draining() bool { return pw.w.Draining() }
+
 // Proxy is the reverse-http server. It accepts mTLS HTTP/2 tunnel
 // connections from workers and exposes Handler / ListenAndServePublic for
 // the public side.

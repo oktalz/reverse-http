@@ -122,6 +122,20 @@ func (p *Proxy) snapshotWorkers() []*Worker {
 	return out
 }
 
+// availableWorkers is snapshotWorkers minus tunnels draining after a graceful
+// GOAWAY — those still complete their in-flight streams but accept no new
+// ones, so selectors (including user-supplied ones) never see them.
+func (p *Proxy) availableWorkers() []*Worker {
+	ws := p.snapshotWorkers()
+	out := ws[:0]
+	for _, w := range ws {
+		if !w.conn.Draining() {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
 // attach registers a freshly-handshaked worker. Returns an error if the
 // proxy is shutting down.
 func (p *Proxy) attach(w *Worker) error {

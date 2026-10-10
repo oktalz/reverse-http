@@ -48,11 +48,15 @@ func serve(c *connection, readyCh chan struct{}) error {
 	for {
 		// Pool.Shutdown signals teardown by closing shutdownCh AND calling
 		// SetReadDeadline(now). Check it on every iteration so a quiet conn
-		// still exits promptly.
+		// still exits promptly. A completed graceful drain (GOAWAY received,
+		// last in-flight stream finished) ends the loop the same way.
 		select {
 		case <-c.shutdownCh:
 			return nil
 		default:
+		}
+		if c.DrainComplete() {
+			return h2.ErrGoaway
 		}
 		c.SetIdleDeadline()
 		f, err := c.Framer.ReadFrame()
@@ -62,6 +66,9 @@ func serve(c *connection, readyCh chan struct{}) error {
 				case <-c.shutdownCh:
 					return nil
 				default:
+				}
+				if c.DrainComplete() {
+					return h2.ErrGoaway
 				}
 				if err := c.SendOrCheckPing(); err != nil {
 					return err
@@ -143,7 +150,17 @@ func (c *connection) handleFrame(f http2.Frame) error {
 		return nil
 
 	case *http2.GoAwayFrame:
-		return h2.ErrGoaway
+		if f.ErrCode != http2.ErrCodeNo {
+			return h2.ErrGoaway
+		}
+		// Graceful GOAWAY — HAProxy emits one on soft-stop/reload while it
+		// still completes the streams already in flight. Enter drain mode:
+		// in-flight handlers run to completion (the peer sends no new
+		// HEADERS after its GOAWAY), and the loop exits via DrainComplete
+		// once the stream registry empties. The pool slot has already been
+		// released to dial a replacement (see dial's DrainStarted select).
+		c.BeginDrain()
+		return nil
 
 	case *http2.RSTStreamFrame:
 		c.HandleRSTStream(f.Header().StreamID)

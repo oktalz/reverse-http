@@ -17,6 +17,7 @@ Module: `github.com/oktalz/reverse-http`
 - Auto-reconnect with jittered backoff; PING-based liveness.
 - Standard `net/http.Handler`: `http.Flusher`, `req.Context()`, panic recovery, `Content-Length` enforcement (short/excess writes reset the stream instead of sending a truncated message) — works the way you'd expect.
 - Graceful shutdown: `pool.Shutdown(ctx)` sends GOAWAY and drains in-flight requests within your deadline.
+- Hitless proxy reloads: a graceful GOAWAY from the peer (HAProxy soft-stop/reload) drains in-flight requests to completion while the pool slot dials a replacement tunnel immediately.
 - The proxy role honors each tunnel's advertised `SETTINGS_MAX_CONCURRENT_STREAMS`: the default selector prefers tunnels with headroom and requests over capacity get `503` backpressure instead of a protocol violation.
 
 ## Install

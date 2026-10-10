@@ -15,7 +15,7 @@ import (
 // to plain-text 5xx responses if no bytes have been written yet; otherwise
 // the public peer sees a truncated body.
 func (p *Proxy) forward(w http.ResponseWriter, req *http.Request) {
-	worker := p.selector.Pick(req, p.snapshotWorkers())
+	worker := p.selector.Pick(req, p.availableWorkers())
 	if worker == nil {
 		http.Error(w, "no worker attached", http.StatusServiceUnavailable)
 		return
@@ -26,11 +26,11 @@ func (p *Proxy) forward(w http.ResponseWriter, req *http.Request) {
 
 	cs, bodyErrCh, err := openForward(worker, req)
 	if err != nil {
-		// Capacity refusals are backpressure, not gateway failure —
+		// Capacity and drain refusals are backpressure, not gateway failure —
 		// surface them as 503 so retrying clients (and a fronting HAProxy
 		// with retry-on) treat them as transient.
 		status := http.StatusBadGateway
-		if errors.Is(err, ErrTunnelSaturated) {
+		if errors.Is(err, ErrTunnelSaturated) || errors.Is(err, ErrTunnelDraining) {
 			status = http.StatusServiceUnavailable
 		}
 		http.Error(w, "rhttp/proxy: failed to open tunnel stream: "+err.Error(), status)
