@@ -1,7 +1,7 @@
 module github.com/oktalz/reverse-http
 
-go 1.25.0
+go 1.27
 
-require golang.org/x/net v0.55.0
+require golang.org/x/net v0.58.0
 
-require golang.org/x/text v0.37.0 // indirect
+require golang.org/x/text v0.41.0 // indirect
