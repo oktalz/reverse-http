@@ -469,17 +469,22 @@ func (c *Conn) emitHeader(hf hpack.HeaderField) {
 // refills mandated by RFC 9113 §6.9 and queues the bytes on the matching
 // stream's body queue. If no stream is registered for streamID we emit
 // RST_STREAM(STREAM_CLOSED) instead.
-func (c *Conn) HandleInboundData(streamID uint32, data []byte, endStream bool) {
-	n := uint32(len(data))
+//
+// flowLen is the frame's full payload length (frame header Length field): for
+// a padded DATA frame that is pad-length byte + data + padding, all of which
+// counts toward flow control per RFC 9113 §6.9.1. Crediting only len(data)
+// would leak the padding out of the peer's view of our receive window until
+// the sender stalled.
+func (c *Conn) HandleInboundData(streamID uint32, data []byte, flowLen uint32, endStream bool) {
 	s := c.GetStream(streamID)
-	if n > 0 {
-		c.SendWindowUpdate(0, n)
+	if flowLen > 0 {
+		c.SendWindowUpdate(0, flowLen)
 		if s != nil {
-			c.SendWindowUpdate(streamID, n)
+			c.SendWindowUpdate(streamID, flowLen)
 		}
 	}
 	if s == nil {
-		if n > 0 {
+		if flowLen > 0 {
 			c.SendRSTStream(streamID, http2.ErrCodeStreamClosed)
 		}
 		return

@@ -129,7 +129,9 @@ func (c *connection) handleFrame(f http2.Frame) error {
 		return nil
 
 	case *http2.DataFrame:
-		c.HandleInboundData(f.Header().StreamID, f.Data(), f.StreamEnded())
+		// f.Header().Length is the full payload (incl. any padding), which is
+		// what flow control must credit back; f.Data() is the usable bytes.
+		c.HandleInboundData(f.Header().StreamID, f.Data(), f.Header().Length, f.StreamEnded())
 		return nil
 
 	case *http2.PingFrame:
