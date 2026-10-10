@@ -33,7 +33,8 @@ func (f SelectorFunc) Pick(req *http.Request, workers []*Worker) *Worker {
 }
 
 // LeastInFlight returns a Selector that picks the worker with the fewest
-// currently-active outbound streams. Ties broken by lowest worker index
+// currently-active outbound streams, skipping workers already at their
+// peer-advertised concurrent-stream limit. Ties broken by lowest worker index
 // (deterministic). Default if Options.Selector is nil.
 func LeastInFlight() Selector {
 	return SelectorFunc(leastInFlightPick)
@@ -45,6 +46,22 @@ func leastInFlightPick(_ *http.Request, workers []*Worker) *Worker {
 	}
 	var best *Worker
 	var bestN int64 = -1
+	for _, w := range workers {
+		if w.saturated() {
+			continue
+		}
+		n := w.inFlight.Load()
+		if best == nil || n < bestN {
+			best = w
+			bestN = n
+		}
+	}
+	if best != nil {
+		return best
+	}
+	// Every tunnel is at its stream limit. Return the least loaded anyway so
+	// the caller's openStream surfaces a capacity error (503) rather than a
+	// misleading "no worker attached".
 	for _, w := range workers {
 		n := w.inFlight.Load()
 		if best == nil || n < bestN {

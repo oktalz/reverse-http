@@ -26,7 +26,14 @@ func (p *Proxy) forward(w http.ResponseWriter, req *http.Request) {
 
 	cs, bodyErrCh, err := openForward(worker, req)
 	if err != nil {
-		http.Error(w, "rhttp/proxy: failed to open tunnel stream: "+err.Error(), http.StatusBadGateway)
+		// Capacity refusals are backpressure, not gateway failure —
+		// surface them as 503 so retrying clients (and a fronting HAProxy
+		// with retry-on) treat them as transient.
+		status := http.StatusBadGateway
+		if errors.Is(err, ErrTunnelSaturated) {
+			status = http.StatusServiceUnavailable
+		}
+		http.Error(w, "rhttp/proxy: failed to open tunnel stream: "+err.Error(), status)
 		return
 	}
 	defer func() {

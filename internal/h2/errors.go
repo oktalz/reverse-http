@@ -32,3 +32,9 @@ const MaxHeaderListSize uint32 = 1 << 20
 // DefaultMaxConcurrentStreams matches the value most H2 servers advertise
 // (Go's net/http2 transport defaults to 100). Used when callers pass zero.
 const DefaultMaxConcurrentStreams uint32 = 100
+
+// NoStreamLimit is the peer-max-streams value used until the peer advertises
+// SETTINGS_MAX_CONCURRENT_STREAMS (initially unlimited per RFC 9113 §6.5.2).
+// The literal max-uint32 is also a legal advertised value with the same
+// practical meaning.
+const NoStreamLimit uint32 = ^uint32(0)

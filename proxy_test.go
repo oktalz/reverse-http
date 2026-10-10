@@ -67,6 +67,9 @@ type proxyFixtureOpts struct {
 	selector       ProxySelector
 	onWorkerAttach func(*ProxyWorker)
 	nbConn         int
+	// maxStreams is the SETTINGS_MAX_CONCURRENT_STREAMS each worker tunnel
+	// advertises to the proxy (0 = library default).
+	maxStreams uint32
 }
 
 // newProxyFixture builds: a CA, server+client certs, a Proxy listening on a
@@ -151,12 +154,13 @@ func newProxyFixture(t *testing.T, fopts proxyFixtureOpts) *proxyFixture {
 		t.Fatalf("split host: %v", err)
 	}
 	pool, err := NewConnectionPool(ServerOptions{
-		Addr:          net.JoinHostPort(host, port),
-		SNIServerName: "127.0.0.1",
-		TLSCert:       clientCert,
-		CACertPool:    caPool,
-		Handler:       fopts.handler,
-		NBConn:        fopts.nbConn,
+		Addr:                 net.JoinHostPort(host, port),
+		SNIServerName:        "127.0.0.1",
+		TLSCert:              clientCert,
+		CACertPool:           caPool,
+		Handler:              fopts.handler,
+		NBConn:               fopts.nbConn,
+		MaxConcurrentStreams: fopts.maxStreams,
 	})
 	if err != nil {
 		t.Fatalf("NewConnectionPool: %v", err)

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"crypto/x509"
+	"errors"
 	"net"
 	"net/http"
 	"sync"
@@ -9,6 +10,13 @@ import (
 
 	"github.com/oktalz/reverse-http/internal/h2"
 )
+
+// ErrTunnelSaturated is returned by openStream when the tunnel already has as
+// many open streams as the peer's SETTINGS_MAX_CONCURRENT_STREAMS allows.
+// Opening one anyway would be a protocol violation — HAProxy refuses the
+// stream and counts a glitch against the connection, and enough glitches get
+// the whole tunnel killed.
+var ErrTunnelSaturated = errors.New("rhttp/proxy: tunnel is at the peer's concurrent-stream limit")
 
 // Worker is one attached reverse-http tunnel. Each Worker owns a single
 // *h2.Conn and presents a stream-multiplexed transport for outbound public
@@ -58,6 +66,18 @@ func (w *Worker) Certificate() *x509.Certificate { return w.cert }
 // InFlight returns the current number of outbound streams being forwarded
 // through this worker. Safe for concurrent reads.
 func (w *Worker) InFlight() int64 { return w.inFlight.Load() }
+
+// saturated reports whether the tunnel has no room for another concurrent
+// stream under the peer's advertised SETTINGS_MAX_CONCURRENT_STREAMS. Used by
+// the default selector to prefer tunnels with headroom; openStream enforces
+// the limit authoritatively under streamsMu.
+func (w *Worker) saturated() bool {
+	limit := w.conn.PeerMaxStreams()
+	w.streamsMu.Lock()
+	n := len(w.streams)
+	w.streamsMu.Unlock()
+	return uint32(n) >= limit
+}
 
 // done returns a channel closed once the worker has been detached. Used by
 // forwarders to bail on a torn-down tunnel.
@@ -112,6 +132,9 @@ func (w *Worker) failAllStreams(err error) {
 func (w *Worker) openStream(initialWindow int32, sendHeaders func(streamID uint32) error) (*clientStream, error) {
 	w.streamsMu.Lock()
 	defer w.streamsMu.Unlock()
+	if uint32(len(w.streams)) >= w.conn.PeerMaxStreams() {
+		return nil, ErrTunnelSaturated
+	}
 	id := w.conn.NextStreamID()
 	s := h2.Acquire(id, w.conn, initialWindow)
 	w.conn.AddStream(s)

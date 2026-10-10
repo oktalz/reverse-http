@@ -101,6 +101,15 @@ type Conn struct {
 	// atomic.Uint32 closes a race the detector flags under high concurrency.
 	maxFrameSize atomic.Uint32
 
+	// peerMaxStreams is the peer's SETTINGS_MAX_CONCURRENT_STREAMS — the cap
+	// on streams *we* may have open toward the peer at once. NoStreamLimit
+	// until the peer advertises one (RFC 9113 §6.5.2: initially unlimited).
+	// Only the proxy role initiates streams, but the setting is tracked here
+	// because SETTINGS handling is shared. Strict peers (HAProxy) refuse
+	// excess streams and count each refusal against the connection's glitch
+	// budget, which can get the whole connection killed.
+	peerMaxStreams atomic.Uint32
+
 	// LastStreamID is the highest peer-initiated stream ID accepted. Used as
 	// the last-stream-id value on the GOAWAY frame sent during teardown
 	// (RFC 9113 §6.8). Owned by the frame reader.
@@ -149,6 +158,7 @@ func New(rwc net.Conn, maxConcurrentStreams uint32) (*Conn, error) {
 		lowerNames: make(map[string]string, len(CommonLowerNames)+8),
 	}
 	c.maxFrameSize.Store(16384)
+	c.peerMaxStreams.Store(NoStreamLimit)
 	maps.Copy(c.canonNames, CommonCanonNames)
 	maps.Copy(c.lowerNames, CommonLowerNames)
 	c.enc = hpack.NewEncoder(&c.encBuf)
@@ -327,6 +337,8 @@ func (c *Conn) ApplyPeerSettings(f *http2.SettingsFrame) error {
 			// change through the queue so it lands in-order with respect to
 			// pending HEADERS frames.
 			c.SendSetMaxDynamicTableSize(s.Val)
+		case http2.SettingMaxConcurrentStreams:
+			c.peerMaxStreams.Store(s.Val)
 		case http2.SettingEnablePush:
 			if s.Val > 1 {
 				return ErrBadSettings
@@ -335,6 +347,12 @@ func (c *Conn) ApplyPeerSettings(f *http2.SettingsFrame) error {
 		return nil
 	})
 }
+
+// PeerMaxStreams returns the peer's advertised SETTINGS_MAX_CONCURRENT_STREAMS
+// (NoStreamLimit if the peer never sent one). The stream-opening side must not
+// exceed it — strict peers (HAProxy) refuse the excess stream and count a
+// glitch against the connection.
+func (c *Conn) PeerMaxStreams() uint32 { return c.peerMaxStreams.Load() }
 
 // ---- HEADERS / CONTINUATION decode ----------------------------------------
 
